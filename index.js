@@ -119,6 +119,28 @@ class BochiBot {
         return [...this.config.botSettings.reactionEmojis, ...serverConfig.selectedServerEmojis];
     }
 
+    // 获取频道在消息中使用的表情（支持频道级别配置）
+    getChannelEmojisForReaction(guildId, channelId) {
+        const serverConfig = this.getServerConfig(guildId);
+        const channelSettings = serverConfig.channelSettings[channelId];
+        
+        // 如果频道有独立的表情配置，使用频道的表情
+        if (channelSettings) {
+            const hasChannelEmojis = 
+                (channelSettings.reactionEmojis && channelSettings.reactionEmojis.length > 0) ||
+                (channelSettings.selectedServerEmojis && channelSettings.selectedServerEmojis.length > 0);
+            
+            if (hasChannelEmojis) {
+                const channelStandardEmojis = channelSettings.reactionEmojis || [];
+                const channelServerEmojis = channelSettings.selectedServerEmojis || [];
+                return [...channelStandardEmojis, ...channelServerEmojis];
+            }
+        }
+        
+        // 否则使用服务器级别的表情
+        return this.getServerEmojisForReaction(guildId);
+    }
+
     // 获取服务器特定设置，带有全局设置作为后备
     getServerSetting(guildId, settingName, channelId = null) {
         const serverConfig = this.getServerConfig(guildId);
@@ -750,7 +772,9 @@ class BochiBot {
                 if (!serverConfig.channelSettings[channelId]) {
                     serverConfig.channelSettings[channelId] = {
                         autoReaction: serverConfig.autoReaction,
-                        aiComment: serverConfig.aiComment
+                        aiComment: serverConfig.aiComment,
+                        reactionEmojis: null,
+                        selectedServerEmojis: null
                     };
                 }
                 serverConfig.channelSettings[channelId].autoReaction = 
@@ -765,13 +789,18 @@ class BochiBot {
                 if (!serverConfig.channelSettings[channelId]) {
                     serverConfig.channelSettings[channelId] = {
                         autoReaction: serverConfig.autoReaction,
-                        aiComment: serverConfig.aiComment
+                        aiComment: serverConfig.aiComment,
+                        reactionEmojis: null,
+                        selectedServerEmojis: null
                     };
                 }
                 serverConfig.channelSettings[channelId].aiComment = 
                     !serverConfig.channelSettings[channelId].aiComment;
             }
             await this.showChannelSettings(interaction);
+        } else if (interaction.customId.startsWith('channel_emoji_settings_')) {
+            const channelId = interaction.customId.replace('channel_emoji_settings_', '');
+            await this.showChannelEmojiSettings(interaction, channelId);
         }
     }
 
