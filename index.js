@@ -1635,12 +1635,9 @@ class BochiBot {
         
         // 自动反应功能
         if (shouldReact) {
-            // 获取服务器特定的表情配置
+            // 获取频道特定的表情配置（支持频道级别 > 服务器级别 > 全局级别）
             const guildId = message.guild?.id;
-            const serverEmojis = guildId ? this.getServerEmojisForReaction(guildId) : this.config.botSettings.reactionEmojis;
-            
-            // 合并标准表情和选择的服务器表情
-            const allEmojis = serverEmojis;
+            const allEmojis = guildId ? this.getChannelEmojisForReaction(guildId, channelId) : this.config.botSettings.reactionEmojis;
             
             if (allEmojis.length > 0) {
                 const randomEmoji = allEmojis[Math.floor(Math.random() * allEmojis.length)];
@@ -2351,6 +2348,15 @@ class BochiBot {
         const hasIndependentSettings = channelSettings && 
             (channelSettings.hasOwnProperty('autoReaction') || channelSettings.hasOwnProperty('aiComment'));
         
+        // 检查是否有频道专属表情
+        const hasChannelEmojis = channelSettings && 
+            ((channelSettings.reactionEmojis && channelSettings.reactionEmojis.length > 0) ||
+             (channelSettings.selectedServerEmojis && channelSettings.selectedServerEmojis.length > 0));
+        
+        const emojiCount = hasChannelEmojis ? 
+            ((channelSettings.reactionEmojis?.length || 0) + (channelSettings.selectedServerEmojis?.length || 0)) : 
+            0;
+        
         const embed = new EmbedBuilder()
             .setColor('#FFB6C1')
             .setTitle('📺 频道设置')
@@ -2358,10 +2364,11 @@ class BochiBot {
             .addFields(
                 { name: '🎨 图片反应', value: effectiveAutoReaction ? '✅ 开启' : '❌ 关闭', inline: true },
                 { name: '💬 AI点评', value: effectiveAiComment ? '✅ 开启' : '❌ 关闭', inline: true },
-                { name: '📊 反应统计', value: this.config.botSettings.channelStats[channelId]?.reactionCount?.toString() || '0', inline: true }
+                { name: '📊 反应统计', value: this.config.botSettings.channelStats[channelId]?.reactionCount?.toString() || '0', inline: true },
+                { name: '😀 频道表情', value: hasChannelEmojis ? `已设置 ${emojiCount} 个表情` : '使用服务器表情', inline: false }
             );
 
-        const row = new ActionRowBuilder()
+        const row1 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId(`toggle_channel_reaction_${channelId}`)
@@ -2373,9 +2380,18 @@ class BochiBot {
                     .setStyle(effectiveAiComment ? ButtonStyle.Danger : ButtonStyle.Success)
             );
 
+        const row2 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`channel_emoji_settings_${channelId}`)
+                    .setLabel('设置频道表情')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🎭')
+            );
+
         await interaction.reply({
             embeds: [embed],
-            components: [row],
+            components: [row1, row2],
             flags: MessageFlags.Ephemeral
         });
     }
