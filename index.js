@@ -825,10 +825,32 @@ class BochiBot {
             await this.showChannelSettings(interaction);
         } else if (interaction.customId.startsWith('save_channel_server_emojis_')) {
             const channelId = interaction.customId.replace('save_channel_server_emojis_', '');
-            await interaction.reply({
-                content: '✅ 频道服务器表情选择已保存！',
-                flags: MessageFlags.Ephemeral
-            });
+            const guildId = interaction.guild?.id;
+            if (guildId) {
+                const serverConfig = this.getServerConfig(guildId);
+                if (!serverConfig.channelSettings[channelId]) {
+                    serverConfig.channelSettings[channelId] = {};
+                }
+                
+                // 确保temp数组存在（防止未选择就保存）
+                if (!serverConfig.channelSettings[channelId].tempSelectedServerEmojis) {
+                    serverConfig.channelSettings[channelId].tempSelectedServerEmojis = 
+                        serverConfig.channelSettings[channelId].selectedServerEmojis ? 
+                        [...serverConfig.channelSettings[channelId].selectedServerEmojis] : [];
+                }
+                
+                // 保存临时选择到正式设置
+                const tempEmojis = serverConfig.channelSettings[channelId].tempSelectedServerEmojis;
+                serverConfig.channelSettings[channelId].selectedServerEmojis = [...tempEmojis];
+                
+                // 保持temp数组与saved同步，而不是删除
+                serverConfig.channelSettings[channelId].tempSelectedServerEmojis = [...tempEmojis];
+                
+                await interaction.reply({
+                    content: `✅ 频道服务器表情已保存！共 ${tempEmojis.length} 个表情。`,
+                    flags: MessageFlags.Ephemeral
+                });
+            }
         } else if (interaction.customId.startsWith('clear_channel_server_emoji_selection_')) {
             const channelId = interaction.customId.replace('clear_channel_server_emoji_selection_', '');
             const guildId = interaction.guild?.id;
@@ -838,6 +860,41 @@ class BochiBot {
                     serverConfig.channelSettings[channelId] = {};
                 }
                 serverConfig.channelSettings[channelId].selectedServerEmojis = null;
+                serverConfig.channelSettings[channelId].tempSelectedServerEmojis = null;
+            }
+            await this.selectChannelServerEmojis(interaction, channelId);
+        } else if (interaction.customId.startsWith('back_to_channel_emoji_settings_')) {
+            const channelId = interaction.customId.replace('back_to_channel_emoji_settings_', '');
+            await this.showChannelEmojiSettings(interaction, channelId);
+        } else if (interaction.customId.startsWith('channel_emoji_prev_page_')) {
+            const channelId = interaction.customId.replace('channel_emoji_prev_page_', '');
+            const guildId = interaction.guild?.id;
+            if (guildId) {
+                const serverConfig = this.getServerConfig(guildId);
+                if (!serverConfig.channelSettings[channelId]) {
+                    serverConfig.channelSettings[channelId] = {};
+                }
+                if (serverConfig.channelSettings[channelId].channelEmojiPageIndex > 0) {
+                    serverConfig.channelSettings[channelId].channelEmojiPageIndex--;
+                }
+            }
+            await this.selectChannelServerEmojis(interaction, channelId);
+        } else if (interaction.customId.startsWith('channel_emoji_next_page_')) {
+            const channelId = interaction.customId.replace('channel_emoji_next_page_', '');
+            const guildId = interaction.guild?.id;
+            if (guildId) {
+                const serverConfig = this.getServerConfig(guildId);
+                if (!serverConfig.channelSettings[channelId]) {
+                    serverConfig.channelSettings[channelId] = {};
+                }
+                const emojisPerPage = 25;
+                const totalPages = Math.ceil(serverConfig.serverEmojisCache.length / emojisPerPage);
+                if (!serverConfig.channelSettings[channelId].channelEmojiPageIndex) {
+                    serverConfig.channelSettings[channelId].channelEmojiPageIndex = 0;
+                }
+                if (serverConfig.channelSettings[channelId].channelEmojiPageIndex < totalPages - 1) {
+                    serverConfig.channelSettings[channelId].channelEmojiPageIndex++;
+                }
             }
             await this.selectChannelServerEmojis(interaction, channelId);
         }
@@ -1485,10 +1542,34 @@ class BochiBot {
                     serverConfig.channelSettings[channelId] = {};
                 }
                 
-                serverConfig.channelSettings[channelId].selectedServerEmojis = interaction.values;
+                // 初始化临时选择数组
+                if (!serverConfig.channelSettings[channelId].tempSelectedServerEmojis) {
+                    serverConfig.channelSettings[channelId].tempSelectedServerEmojis = 
+                        serverConfig.channelSettings[channelId].selectedServerEmojis ? 
+                        [...serverConfig.channelSettings[channelId].selectedServerEmojis] : [];
+                }
+                
+                // 合并选择：保留不在当前页面的已保存表情，只更新当前页面的选择
+                const currentPageEmojis = new Set(interaction.values);
+                const existingEmojis = new Set(serverConfig.channelSettings[channelId].tempSelectedServerEmojis);
+                
+                // 获取当前页面的表情范围
+                const emojisPerPage = 25;
+                const pageIndex = serverConfig.channelSettings[channelId].channelEmojiPageIndex || 0;
+                const startIndex = pageIndex * emojisPerPage;
+                const endIndex = Math.min(startIndex + emojisPerPage, serverConfig.serverEmojisCache.length);
+                const currentPageAllEmojis = serverConfig.serverEmojisCache.slice(startIndex, endIndex);
+                
+                // 先移除当前页面的所有表情
+                currentPageAllEmojis.forEach(emoji => existingEmojis.delete(emoji));
+                
+                // 然后添加用户在当前页选择的表情
+                currentPageEmojis.forEach(emoji => existingEmojis.add(emoji));
+                
+                serverConfig.channelSettings[channelId].tempSelectedServerEmojis = Array.from(existingEmojis);
                 
                 await interaction.reply({
-                    content: `✅ 已为此频道选择 ${interaction.values.length} 个服务器表情！`,
+                    content: `✅ 已选择 ${interaction.values.length} 个表情，总计 ${serverConfig.channelSettings[channelId].tempSelectedServerEmojis.length} 个表情，请点击"保存选择"来应用！`,
                     flags: MessageFlags.Ephemeral
                 });
             }
@@ -3249,8 +3330,29 @@ class BochiBot {
             return;
         }
 
-        const channelSettings = serverConfig.channelSettings[channelId] || {};
-        const currentSelectedEmojis = channelSettings.selectedServerEmojis || [];
+        if (!serverConfig.channelSettings[channelId]) {
+            serverConfig.channelSettings[channelId] = {};
+        }
+        const channelSettings = serverConfig.channelSettings[channelId];
+        
+        // 初始化临时选择：如果不存在，从已保存的表情复制
+        if (!channelSettings.tempSelectedServerEmojis && channelSettings.selectedServerEmojis) {
+            channelSettings.tempSelectedServerEmojis = [...channelSettings.selectedServerEmojis];
+        }
+        
+        const currentSelectedEmojis = channelSettings.tempSelectedServerEmojis || channelSettings.selectedServerEmojis || [];
+        const savedEmojis = channelSettings.selectedServerEmojis || [];
+        
+        // 分页设置
+        const emojisPerPage = 25;
+        const pageIndex = channelSettings.channelEmojiPageIndex || 0;
+        const cachedEmojis = serverConfig.serverEmojisCache;
+        const totalPages = Math.ceil(cachedEmojis.length / emojisPerPage);
+        const startIndex = pageIndex * emojisPerPage;
+        const endIndex = Math.min(startIndex + emojisPerPage, cachedEmojis.length);
+        
+        // 获取当前页的表情
+        const currentPageEmojis = cachedEmojis.slice(startIndex, endIndex);
         
         const channel = interaction.guild.channels.cache.get(channelId);
         const channelName = channel ? channel.name : '未知频道';
@@ -3258,23 +3360,14 @@ class BochiBot {
         const embed = new EmbedBuilder()
             .setColor('#FFB6C1')
             .setTitle('🎨 频道服务器表情选择')
-            .setDescription(`频道: #${channelName}\n\n从服务器的 ${serverConfig.serverEmojisCache.length} 个表情中选择要用于此频道反应的表情。`);
+            .setDescription(`频道: #${channelName}\n\n从服务器的 ${cachedEmojis.length} 个表情中选择要用于此频道反应的表情\n\n` +
+                          `当前页面: ${pageIndex + 1}/${totalPages} (显示 ${startIndex + 1}-${endIndex})\n` +
+                          `已保存表情: ${savedEmojis.length} 个\n` +
+                          `临时选择: ${currentSelectedEmojis.length} 个`);
 
-        if (currentSelectedEmojis.length > 0) {
-            const preview = currentSelectedEmojis.slice(0, 20).join(' ') + 
-                          (currentSelectedEmojis.length > 20 ? ` 等${currentSelectedEmojis.length}个...` : '');
-            embed.addFields({
-                name: '当前选择的表情',
-                value: `${currentSelectedEmojis.length} 个: ${preview}`,
-                inline: false
-            });
-        }
-
-        // 创建选择菜单（前25个表情）
-        const emojisToShow = serverConfig.serverEmojisCache.slice(0, 25);
-        const emojiOptions = emojisToShow.map((emoji, index) => {
+        const emojiOptions = currentPageEmojis.map((emoji, index) => {
             const match = emoji.match(/:([^:]+):/);
-            const emojiName = match ? match[1] : `emoji_${index}`;
+            const emojiName = match ? match[1] : `emoji_${startIndex + index}`;
             
             return {
                 label: emojiName,
@@ -3288,29 +3381,49 @@ class BochiBot {
             .setCustomId(`channel_server_emoji_menu_${channelId}`)
             .setPlaceholder('选择要用于此频道的表情...')
             .setMinValues(0)
-            .setMaxValues(Math.min(emojisToShow.length, 10))
+            .setMaxValues(Math.min(currentPageEmojis.length, 10))
             .addOptions(emojiOptions);
 
         const row1 = new ActionRowBuilder().addComponents(selectMenu);
         
+        // 分页导航按钮
         const row2 = new ActionRowBuilder()
             .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`channel_emoji_prev_page_${channelId}`)
+                    .setLabel('上一页')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setDisabled(pageIndex === 0),
+                new ButtonBuilder()
+                    .setCustomId(`channel_emoji_next_page_${channelId}`)
+                    .setLabel('下一页')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setDisabled(pageIndex >= totalPages - 1),
                 new ButtonBuilder()
                     .setCustomId(`save_channel_server_emojis_${channelId}`)
                     .setLabel('保存选择')
                     .setStyle(ButtonStyle.Success)
-                    .setEmoji('✅'),
+                    .setEmoji('✅')
+            );
+        
+        const row3 = new ActionRowBuilder()
+            .addComponents(
                 new ButtonBuilder()
                     .setCustomId(`clear_channel_server_emoji_selection_${channelId}`)
                     .setLabel('清除选择')
                     .setStyle(ButtonStyle.Danger)
                     .setEmoji('🗑️')
-                    .setDisabled(currentSelectedEmojis.length === 0)
+                    .setDisabled(savedEmojis.length === 0 && currentSelectedEmojis.length === 0),
+                new ButtonBuilder()
+                    .setCustomId(`back_to_channel_emoji_settings_${channelId}`)
+                    .setLabel('返回')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🔙')
             );
 
         await interaction.update({
             embeds: [embed],
-            components: [row1, row2]
+            components: [row1, row2, row3]
         });
     }
 
