@@ -1,0 +1,20 @@
+{
+  "name": "bochi-discord-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "波奇Discord机器人 - 图片识别与AI点评机器人",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.11.0",
+    "discord.js": "^14.22.1",
+    "dotenv": "^17.2.2"
+  }
+}
