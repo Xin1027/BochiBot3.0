@@ -1134,7 +1134,7 @@ class BochiBot {
             .setTitle('🔒 权限设置')
             .addFields(
                 { name: '👤 允许的用户', value: userCountText, inline: false },
-                { name: '💡 说明', value: '权限层级:\n1. 全局管理员（环境变量设置）\n2. 服务器所有者\n3. BOT维护员角色（自动识别）\n4. 单独授权的用户（下方管理）', inline: false }
+                { name: '💡 说明', value: '权限层级:\n1. 全局管理员（环境变量设置）\n2. 服务器所有者\n3. 单独授权的用户（下方管理）', inline: false }
             );
 
         const components = [];
@@ -2492,44 +2492,6 @@ class BochiBot {
             return true;
         }
         
-        // 检查是否有"BOT维护员"角色
-        const possibleNames = ['BOT维护员', 'Bot维护员', 'bot维护员', 'BOT 维护员', 'Bot 维护员'];
-        let botMaintainerRole = null;
-        
-        console.log(`🔍 寻找BOT维护员角色，可能的名称: [${possibleNames.join(', ')}]`);
-        
-        for (const roleName of possibleNames) {
-            botMaintainerRole = member.guild.roles.cache.find(role => role.name === roleName);
-            if (botMaintainerRole) {
-                console.log(`✅ 找到BOT维护员角色: "${roleName}" (ID: ${botMaintainerRole.id})`);
-                break;
-            }
-        }
-        
-        // 如果精确匹配失败，尝试包含匹配
-        if (!botMaintainerRole) {
-            console.log(`🔍 精确匹配失败，尝试包含匹配...`);
-            const allRoles = member.guild.roles.cache.map(role => `"${role.name}"`);
-            console.log(`📋 服务器所有角色: [${allRoles.join(', ')}]`);
-            
-            botMaintainerRole = member.guild.roles.cache.find(role => 
-                role.name.includes('维护员') || role.name.includes('BOT') || role.name.toLowerCase().includes('maintainer')
-            );
-            
-            if (botMaintainerRole) {
-                console.log(`✅ 包含匹配找到BOT维护员角色: "${botMaintainerRole.name}" (ID: ${botMaintainerRole.id})`);
-            } else {
-                console.log(`❌ 未找到任何BOT维护员相关角色`);
-            }
-        }
-        
-        if (botMaintainerRole && member.roles.cache.has(botMaintainerRole.id)) {
-            console.log(`✅ 权限通过: 用户拥有BOT维护员角色 "${botMaintainerRole.name}"`);
-            return true;
-        } else if (botMaintainerRole) {
-            console.log(`❌ 用户虽然服务器有BOT维护员角色 "${botMaintainerRole.name}"，但用户未拥有此角色`);
-        }
-        
         // 检查用户是否在允许的用户列表中
         console.log(`🔍 检查个人用户权限，允许的用户ID: [${this.config.botSettings.allowedUsers.join(', ')}]`);
         const isAllowedUser = this.config.botSettings.allowedUsers.includes(member.id);
@@ -2604,9 +2566,6 @@ class BochiBot {
             // 获取所有角色
             const allRoles = guild.roles.cache.map(role => `${role.name} (${role.id})`);
             
-            // 查找BOT维护员角色
-            const botMaintainerRole = guild.roles.cache.find(role => role.name === 'BOT维护员');
-            
             // 获取用户的角色
             const userRoles = member.roles.cache.map(role => `${role.name} (${role.id})`);
             
@@ -2625,13 +2584,6 @@ class BochiBot {
                     {
                         name: '🎭 用户拥有的角色',
                         value: userRoles.join('\n') || '无角色',
-                        inline: false
-                    },
-                    {
-                        name: '🤖 BOT维护员角色状态',
-                        value: botMaintainerRole ? 
-                            `✅ 找到角色\n角色ID: ${botMaintainerRole.id}\n拥有此角色的用户数: ${botMaintainerRole.members.size}\n当前用户是否拥有: ${member.roles.cache.has(botMaintainerRole.id) ? '是' : '否'}` :
-                            '❌ 未找到"BOT维护员"角色',
                         inline: false
                     },
                     {
