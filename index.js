@@ -801,6 +801,45 @@ class BochiBot {
         } else if (interaction.customId.startsWith('channel_emoji_settings_')) {
             const channelId = interaction.customId.replace('channel_emoji_settings_', '');
             await this.showChannelEmojiSettings(interaction, channelId);
+        } else if (interaction.customId.startsWith('edit_channel_standard_emojis_')) {
+            const channelId = interaction.customId.replace('edit_channel_standard_emojis_', '');
+            await this.showChannelEmojiModal(interaction, channelId);
+        } else if (interaction.customId.startsWith('select_channel_server_emojis_')) {
+            const channelId = interaction.customId.replace('select_channel_server_emojis_', '');
+            await this.selectChannelServerEmojis(interaction, channelId);
+        } else if (interaction.customId.startsWith('clear_channel_emojis_')) {
+            const channelId = interaction.customId.replace('clear_channel_emojis_', '');
+            const guildId = interaction.guild?.id;
+            if (guildId) {
+                const serverConfig = this.getServerConfig(guildId);
+                if (!serverConfig.channelSettings[channelId]) {
+                    serverConfig.channelSettings[channelId] = {};
+                }
+                serverConfig.channelSettings[channelId].reactionEmojis = null;
+                serverConfig.channelSettings[channelId].selectedServerEmojis = null;
+            }
+            await this.showChannelEmojiSettings(interaction, channelId);
+        } else if (interaction.customId.startsWith('back_to_channel_settings_')) {
+            const channelId = interaction.customId.replace('back_to_channel_settings_', '');
+            interaction.channel = { id: channelId };
+            await this.showChannelSettings(interaction);
+        } else if (interaction.customId.startsWith('save_channel_server_emojis_')) {
+            const channelId = interaction.customId.replace('save_channel_server_emojis_', '');
+            await interaction.reply({
+                content: '✅ 频道服务器表情选择已保存！',
+                flags: MessageFlags.Ephemeral
+            });
+        } else if (interaction.customId.startsWith('clear_channel_server_emoji_selection_')) {
+            const channelId = interaction.customId.replace('clear_channel_server_emoji_selection_', '');
+            const guildId = interaction.guild?.id;
+            if (guildId) {
+                const serverConfig = this.getServerConfig(guildId);
+                if (!serverConfig.channelSettings[channelId]) {
+                    serverConfig.channelSettings[channelId] = {};
+                }
+                serverConfig.channelSettings[channelId].selectedServerEmojis = null;
+            }
+            await this.selectChannelServerEmojis(interaction, channelId);
         }
     }
 
@@ -1434,6 +1473,26 @@ class BochiBot {
                 });
                 break;
         }
+        
+        // 处理频道服务器表情选择菜单（动态ID）
+        if (interaction.customId.startsWith('channel_server_emoji_menu_')) {
+            const channelId = interaction.customId.replace('channel_server_emoji_menu_', '');
+            const guildId = interaction.guild?.id;
+            
+            if (guildId) {
+                const serverConfig = this.getServerConfig(guildId);
+                if (!serverConfig.channelSettings[channelId]) {
+                    serverConfig.channelSettings[channelId] = {};
+                }
+                
+                serverConfig.channelSettings[channelId].selectedServerEmojis = interaction.values;
+                
+                await interaction.reply({
+                    content: `✅ 已为此频道选择 ${interaction.values.length} 个服务器表情！`,
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+        }
     }
 
     async handleModalInteraction(interaction) {
@@ -1614,6 +1673,33 @@ class BochiBot {
                     console.log(`✅ 已从管理员列表移除用户ID ${removeUserId}`);
                 }
                 break;
+        }
+        
+        // 处理频道表情modal（动态ID）
+        if (interaction.customId.startsWith('channel_emoji_modal_')) {
+            const channelId = interaction.customId.replace('channel_emoji_modal_', '');
+            const channelEmojis = interaction.fields.getTextInputValue('channel_reaction_emojis');
+            const guildId = interaction.guild?.id;
+            
+            if (guildId) {
+                const serverConfig = this.getServerConfig(guildId);
+                if (!serverConfig.channelSettings[channelId]) {
+                    serverConfig.channelSettings[channelId] = {};
+                }
+                
+                if (channelEmojis.trim().length === 0) {
+                    serverConfig.channelSettings[channelId].reactionEmojis = null;
+                } else {
+                    serverConfig.channelSettings[channelId].reactionEmojis = channelEmojis
+                        .split(' ')
+                        .filter(emoji => emoji.trim().length > 0);
+                }
+                
+                await interaction.reply({
+                    content: `✅ 频道标准表情已更新！${channelEmojis.trim().length === 0 ? '（已清除，将使用服务器设置）' : ''}`,
+                    flags: MessageFlags.Ephemeral
+                });
+            }
         }
     }
 
@@ -3042,6 +3128,190 @@ class BochiBot {
         } catch (error) {
             console.error('斜杠命令注册失败:', error);
         }
+    }
+
+    async showChannelEmojiSettings(interaction, channelId) {
+        const guildId = interaction.guild?.id;
+        if (!guildId) {
+            await interaction.reply({
+                content: '❌ 无法获取服务器信息。',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        const serverConfig = this.getServerConfig(guildId);
+        const channelSettings = serverConfig.channelSettings[channelId] || {};
+        
+        const channelStandardEmojis = channelSettings.reactionEmojis || [];
+        const channelServerEmojis = channelSettings.selectedServerEmojis || [];
+        const totalChannelEmojis = channelStandardEmojis.length + channelServerEmojis.length;
+        
+        const channel = interaction.guild.channels.cache.get(channelId);
+        const channelName = channel ? channel.name : '未知频道';
+        
+        const embed = new EmbedBuilder()
+            .setColor('#FFB6C1')
+            .setTitle('🎭 频道表情设置')
+            .setDescription(`频道: #${channelName}\n\n为此频道配置独立的反应表情。如果不设置，将使用服务器级别的表情。`)
+            .addFields(
+                { name: '😀 标准表情', value: channelStandardEmojis.length > 0 ? channelStandardEmojis.join(' ') : '未设置（使用服务器设置）', inline: false },
+                { name: '🎨 服务器表情', value: channelServerEmojis.length > 0 ? `${channelServerEmojis.slice(0, 10).join(' ')}${channelServerEmojis.length > 10 ? ` 等${channelServerEmojis.length}个...` : ''}` : '未设置（使用服务器设置）', inline: false },
+                { name: '📊 总计', value: `${totalChannelEmojis} 个表情`, inline: true }
+            );
+
+        const row1 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`edit_channel_standard_emojis_${channelId}`)
+                    .setLabel('编辑标准表情')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('😀'),
+                new ButtonBuilder()
+                    .setCustomId(`select_channel_server_emojis_${channelId}`)
+                    .setLabel('选择服务器表情')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🎨')
+            );
+
+        const row2 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`clear_channel_emojis_${channelId}`)
+                    .setLabel('清除频道表情设置')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🗑️')
+                    .setDisabled(totalChannelEmojis === 0),
+                new ButtonBuilder()
+                    .setCustomId(`back_to_channel_settings_${channelId}`)
+                    .setLabel('返回频道设置')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('↩️')
+            );
+
+        await interaction.update({
+            embeds: [embed],
+            components: [row1, row2]
+        });
+    }
+
+    async showChannelEmojiModal(interaction, channelId) {
+        const guildId = interaction.guild?.id;
+        if (!guildId) {
+            await interaction.reply({
+                content: '❌ 无法获取服务器信息。',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        const serverConfig = this.getServerConfig(guildId);
+        const channelSettings = serverConfig.channelSettings[channelId] || {};
+        const currentEmojis = channelSettings.reactionEmojis || [];
+        
+        const modal = new ModalBuilder()
+            .setCustomId(`channel_emoji_modal_${channelId}`)
+            .setTitle('编辑频道标准表情');
+
+        const emojiInput = new TextInputBuilder()
+            .setCustomId('channel_reaction_emojis')
+            .setLabel('反应表情 (用空格分隔)')
+            .setStyle(TextInputStyle.Short)
+            .setValue(currentEmojis.join(' '))
+            .setPlaceholder('例如: 👍 ❤️ 🎨 ✨ 🔥')
+            .setRequired(false);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(emojiInput)
+        );
+
+        await interaction.showModal(modal);
+    }
+
+    async selectChannelServerEmojis(interaction, channelId) {
+        const guildId = interaction.guild?.id;
+        if (!guildId) {
+            await interaction.reply({
+                content: '❌ 无法获取服务器信息。',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        const serverConfig = this.getServerConfig(guildId);
+        
+        // 检查是否已扫描服务器表情
+        if (!serverConfig.serverEmojisCache || serverConfig.serverEmojisCache.length === 0) {
+            await interaction.reply({
+                content: '❌ 请先在「机器人设置」中扫描服务器表情！',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        const channelSettings = serverConfig.channelSettings[channelId] || {};
+        const currentSelectedEmojis = channelSettings.selectedServerEmojis || [];
+        
+        const channel = interaction.guild.channels.cache.get(channelId);
+        const channelName = channel ? channel.name : '未知频道';
+        
+        const embed = new EmbedBuilder()
+            .setColor('#FFB6C1')
+            .setTitle('🎨 频道服务器表情选择')
+            .setDescription(`频道: #${channelName}\n\n从服务器的 ${serverConfig.serverEmojisCache.length} 个表情中选择要用于此频道反应的表情。`);
+
+        if (currentSelectedEmojis.length > 0) {
+            const preview = currentSelectedEmojis.slice(0, 20).join(' ') + 
+                          (currentSelectedEmojis.length > 20 ? ` 等${currentSelectedEmojis.length}个...` : '');
+            embed.addFields({
+                name: '当前选择的表情',
+                value: `${currentSelectedEmojis.length} 个: ${preview}`,
+                inline: false
+            });
+        }
+
+        // 创建选择菜单（前25个表情）
+        const emojisToShow = serverConfig.serverEmojisCache.slice(0, 25);
+        const emojiOptions = emojisToShow.map((emoji, index) => {
+            const match = emoji.match(/:([^:]+):/);
+            const emojiName = match ? match[1] : `emoji_${index}`;
+            
+            return {
+                label: emojiName,
+                value: emoji,
+                emoji: emoji,
+                default: currentSelectedEmojis.includes(emoji)
+            };
+        });
+
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`channel_server_emoji_menu_${channelId}`)
+            .setPlaceholder('选择要用于此频道的表情...')
+            .setMinValues(0)
+            .setMaxValues(Math.min(emojisToShow.length, 10))
+            .addOptions(emojiOptions);
+
+        const row1 = new ActionRowBuilder().addComponents(selectMenu);
+        
+        const row2 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`save_channel_server_emojis_${channelId}`)
+                    .setLabel('保存选择')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('✅'),
+                new ButtonBuilder()
+                    .setCustomId(`clear_channel_server_emoji_selection_${channelId}`)
+                    .setLabel('清除选择')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🗑️')
+                    .setDisabled(currentSelectedEmojis.length === 0)
+            );
+
+        await interaction.update({
+            embeds: [embed],
+            components: [row1, row2]
+        });
     }
 
     start() {
