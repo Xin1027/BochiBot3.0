@@ -9,8 +9,9 @@
 - **智能图片识别**: 自动检测频道中的图片并进行处理
 - **AI点评系统**: 使用Gemini或OpenAI API对图片进行友好的点评
 - **自动表情反应**: 对精美图片自动添加表情反应（支持标准表情和服务器自定义表情）
-- **服务器表情管理**: 扫描→选择→确认的表情配置流程
-- **权限控制**: 支持基于Discord角色的权限管理
+- **频道级别独立配置**: 每个频道可以独立设置表情反应，优先级为：频道 > 服务器 > 全局
+- **服务器表情管理**: 扫描→选择→确认的表情配置流程，支持分页浏览和多页选择
+- **权限控制**: 支持全局管理员、服务器所有者和个人授权的多层级权限系统
 - **多API支持**: 同时支持Gemini和OpenAI API，支持多密钥轮询
 - **模型选择**: 支持动态获取和选择不同的AI模型
 - **自定义AI提示词**: 可配置AI点评的风格和内容
@@ -63,13 +64,25 @@
 
 ## Recent Changes
 
-**2025-11-15**: Successfully imported and configured for Replit environment
-- Installed all Node.js dependencies (discord.js, @google/generative-ai, axios, dotenv)
-- Configured DISCORD_TOKEN secret for bot authentication
-- Set up workflow "Discord Bot" to run the bot continuously
-- Configured deployment as VM mode for 24/7 operation
-- Created .gitignore to protect sensitive files
-- Bot successfully connected and registered slash commands in servers
+**2025-11-15**: 频道级别独立表情反应功能
+- 实现了完整的频道级别表情配置系统
+- 每个频道可独立配置标准表情和服务器自定义表情
+- 表情优先级：频道设置 > 服务器设置 > 全局设置
+- 支持完整的分页浏览和多页选择功能
+- 添加了频道表情管理界面和交互按钮
+- 所有数据流和处理器已正确实现并通过测试
+
+**2025-11-15**: 权限系统优化
+- 移除了"BOT维护员"默认管理员角色
+- 简化为三层权限系统：全局管理员 > 服务器所有者 > 个人授权用户
+
+**2025-11-15**: 初始配置
+- 安装所有Node.js依赖 (discord.js, @google/generative-ai, axios, dotenv)
+- 配置DISCORD_TOKEN密钥进行机器人认证
+- 设置"Discord Bot"工作流持续运行
+- 配置VM模式部署以实现24/7运行
+- 创建.gitignore保护敏感文件
+- 机器人成功连接并在服务器中注册斜杠命令
 
 ## User Preferences
 
